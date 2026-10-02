@@ -34,6 +34,7 @@ services:
       - caddy_data:/data      # κρατά την τοπική CA· αν χαθεί, οι χρήστες βλέπουν ξανά προειδοποίηση
     environment:
       - TLS_HOSTS=${TLS_HOSTS:-localhost}
+      - TLS_DEFAULT_SNI=${TLS_DEFAULT_SNI:-localhost}   # η IP του server, για όσους ανοίγουν με IP
     restart: unless-stopped
 
 volumes:

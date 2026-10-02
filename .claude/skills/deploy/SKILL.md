@@ -53,7 +53,7 @@ description: Deploy team-timesheet to the dev VM 10.240.138.191 (user mkatsil). 
    set -e
    ts=$(date +%Y%m%d-%H%M%S)
    docker exec team-timesheet python -c "import sqlite3; s=sqlite3.connect('/data/timesheet.db'); d=sqlite3.connect('/data/backup-$ts.db'); s.backup(d); d.close()" || echo "no running container, skipped backup"
-   tar -xzf ~/team-timesheet.tar.gz -C ~
+   tar -xzf ~/team-timesheet.tar.gz -C ~ --exclude='team-timesheet/data' --exclude='team-timesheet/data/*'
    docker load -i ~/team-timesheet-image.tar
    cd ~/team-timesheet && docker compose up -d --no-build
    rm ~/team-timesheet.tar.gz ~/team-timesheet-image.tar
