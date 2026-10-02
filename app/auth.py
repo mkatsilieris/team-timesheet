@@ -11,19 +11,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import logging
 import os
 import re
 import secrets
-import smtplib
 import time
-from email.message import EmailMessage
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, StringConstraints
 
-from . import db
+from . import db, mailer
 
 log = logging.getLogger("uvicorn.error")
 
@@ -81,59 +80,46 @@ def _token_hash(token: str) -> str:
 
 
 # ---------- Αποστολή email ----------
-def deliver_password(email: str, name: str, password: str, reset: bool) -> None:
-    """Στέλνει τον κωδικό με SMTP. Χωρίς SMTP_HOST τον γράφει στο log (τοπικό development)."""
-    host = os.environ.get("SMTP_HOST", "").strip()
-    if not host:
-        log.warning("[DEV] Δεν έχει οριστεί SMTP_HOST. Κωδικός πρόσβασης για %s: %s", email, password)
-        return
-    port = int(os.environ.get("SMTP_PORT", "25"))
-    username = os.environ.get("SMTP_USERNAME", "")
-    smtp_password = os.environ.get("SMTP_PASSWORD", "")
-    sender = os.environ.get("SMTP_FROM_EMAIL", f"no-reply@{EMAIL_DOMAIN}")
-    intro = ("Ζητήσατε νέο κωδικό πρόσβασης για το Team Timesheet."
-             if reset else "Ο λογαριασμός σας στο Team Timesheet δημιουργήθηκε.")
-    note = ("Ο προηγούμενος κωδικός σας παύει να ισχύει μόλις συνδεθείτε με τον νέο. "
-            "Αν δεν ζητήσατε εσείς νέο κωδικό, αγνοήστε αυτό το μήνυμα και συνεχίστε με τον παλιό."
-            if reset else "Η πρόσβασή σας θα ενεργοποιηθεί μόλις την εγκρίνει ένας διαχειριστής.")
+PasswordMail = Literal["register", "reset", "invite"]
 
-    msg = EmailMessage()
-    msg["Subject"] = "Νέος κωδικός πρόσβασης στο Team Timesheet" if reset else "Ο κωδικός πρόσβασής σας στο Team Timesheet"
-    msg["From"] = sender
-    msg["To"] = email
-    msg.set_content(
-        f"Γεια σας {name},\n\n{intro}\n\nΚωδικός πρόσβασης: {password}\n\n"
+
+def deliver_password(email: str, name: str, password: str, kind: PasswordMail) -> None:
+    """Στέλνει τον κωδικό: στην εγγραφή, στο «Ξέχασα τον κωδικό», ή όταν ένας admin φτιάχνει τον λογαριασμό."""
+    intro, note, subject = {
+        "register": ("Ο λογαριασμός σας στο Team Timesheet δημιουργήθηκε.",
+                     "Η πρόσβασή σας θα ενεργοποιηθεί μόλις την εγκρίνει ένας διαχειριστής.",
+                     "Ο κωδικός πρόσβασής σας στο Team Timesheet"),
+        "invite": ("Ένας διαχειριστής δημιούργησε για εσάς λογαριασμό στο Team Timesheet.",
+                   "Η πρόσβασή σας είναι ήδη ενεργή.",
+                   "Ο λογαριασμός σας στο Team Timesheet"),
+        "reset": ("Ζητήσατε νέο κωδικό πρόσβασης για το Team Timesheet.",
+                  "Ο προηγούμενος κωδικός σας παύει να ισχύει μόλις συνδεθείτε με τον νέο. "
+                  "Αν δεν ζητήσατε εσείς νέο κωδικό, αγνοήστε αυτό το μήνυμα και συνεχίστε με τον παλιό.",
+                  "Νέος κωδικός πρόσβασης στο Team Timesheet"),
+    }[kind]
+    url = mailer.app_url()
+    link_text = f"Η εφαρμογή: {url}\n" if url else ""
+    link_html = f'<p>Η εφαρμογή: <a href="{url}">{url}</a></p>' if url else ""
+    safe_name = html.escape(name)
+    mailer.send_email(
+        email, subject,
+        f"Γεια σας {name},\n\n{intro}\n\nEmail: {email}\nΚωδικός πρόσβασης: {password}\n{link_text}\n"
         "Μπορείτε να αλλάξετε τον κωδικό από την εφαρμογή, μέσα από την επιλογή «Αλλαγή κωδικού».\n"
-        f"{note}\n\nΜην προωθήσετε αυτό το μήνυμα.\n"
-    )
-    msg.add_alternative(
-        f"""<div style="font-family:Arial,sans-serif;font-size:14px;color:#1d2528">
-<p>Γεια σας {name},</p>
+        f"{note}\n\nΜην προωθήσετε αυτό το μήνυμα.\n",
+        f"""<p>Γεια σας {safe_name},</p>
 <p>{intro}</p>
-<p>Κωδικός πρόσβασης:</p>
+<p>Email: <b>{email}</b><br>Κωδικός πρόσβασης:</p>
 <p style="font-family:Consolas,monospace;font-size:22px;letter-spacing:2px;font-weight:bold;color:#0F4C5C">{password}</p>
+{link_html}
 <p>Μπορείτε να αλλάξετε τον κωδικό από την εφαρμογή, μέσα από την επιλογή «Αλλαγή κωδικού».</p>
 <p>{note}</p>
-<p style="color:#5F6B70;font-size:12px">Μην προωθήσετε αυτό το μήνυμα.</p>
-</div>""",
-        subtype="html",
+<p style="color:#5F6B70;font-size:12px">Μην προωθήσετε αυτό το μήνυμα.</p>""",
     )
 
-    if port == 465 or os.environ.get("SMTP_SSL", "") == "1":
-        smtp = smtplib.SMTP_SSL(host, port, timeout=15)
-    else:
-        smtp = smtplib.SMTP(host, port, timeout=15)
-    with smtp:
-        if not isinstance(smtp, smtplib.SMTP_SSL) and (port == 587 or os.environ.get("SMTP_STARTTLS", "") == "1"):
-            smtp.starttls()
-        if username and smtp_password:
-            smtp.login(username, smtp_password)
-        smtp.send_message(msg)
 
-
-def send_or_fail(email: str, name: str, password: str, reset: bool) -> None:
+def send_or_fail(email: str, name: str, password: str, kind: PasswordMail) -> None:
     try:
-        deliver_password(email, name, password, reset)
+        deliver_password(email, name, password, kind)
     except Exception:
         log.exception("Αποτυχία αποστολής κωδικού στο %s", email)
         raise HTTPException(502, "Το email με τον κωδικό δεν στάλθηκε. Δοκιμάστε ξανά σε λίγο.")
@@ -221,7 +207,7 @@ def register(body: Register):
         db.add_log(conn, body.name, "Εγγραφή χρήστη", note=f"{email} ({role})", ts=stamp)
         db.sync_team_member(conn, email, "system", ts=stamp)
         # Αν το email δεν φύγει, η εξαίρεση ακυρώνει τη συναλλαγή και ο λογαριασμός δεν δημιουργείται.
-        send_or_fail(email, body.name, password, reset=False)
+        send_or_fail(email, body.name, password, "register")
     return {"ok": True, "message": "Ο κωδικός πρόσβασης στάλθηκε στο email σας."}
 
 
@@ -279,7 +265,7 @@ def forgot(body: ForgotPassword):
                 raise HTTPException(429, f"Μόλις στάλθηκε κωδικός. Δοκιμάστε ξανά σε {wait} δευτερόλεπτα.")
             password = generate_password()
             conn.execute("UPDATE users SET reset_hash=?, reset_at=? WHERE email=?", (hash_password(password), now, email))
-            send_or_fail(email, user["name"], password, reset=True)
+            send_or_fail(email, user["name"], password, "reset")
     # Ίδια απάντηση είτε υπάρχει λογαριασμός είτε όχι.
     return {"ok": True, "message": "Αν υπάρχει λογαριασμός με αυτό το email, στάλθηκε νέος κωδικός."}
 
@@ -319,14 +305,61 @@ class RoleChange(BaseModel):
     role: Literal["pending", "user", "admin"]
 
 
+class NewUser(BaseModel):
+    email: str
+    name: DisplayName
+    role: Literal["user", "admin"] = "user"
+
+
+class NotifyChange(BaseModel):
+    email: str
+    enabled: bool
+
+
 @router.get("/api/admin/users")
 def list_users(_: Admin):
     with db.read_conn() as conn:
         rows = conn.execute(
-            "SELECT email, name, role, created_at, approved_by, approved_at FROM users "
+            "SELECT email, name, role, notify_missing, created_at, approved_by, approved_at FROM users "
             "ORDER BY CASE role WHEN 'pending' THEN 0 ELSE 1 END, name COLLATE NOCASE"
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "notify_missing": bool(r["notify_missing"])} for r in rows]
+
+
+@router.post("/api/admin/users")
+def create_user(body: NewUser, admin: Admin):
+    """Ο admin φτιάχνει λογαριασμό· είναι εγκεκριμένος από την αρχή και ο κωδικός πηγαίνει στο email του χρήστη."""
+    email = normalize_email(body.email)
+    password = generate_password()
+    stamp = db.now_stamp()
+    with db.write_tx() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
+            raise HTTPException(409, "Υπάρχει ήδη λογαριασμός με αυτό το email.")
+        conn.execute(
+            "INSERT INTO users(email,name,role,password_hash,reset_at,created_at,approved_by,approved_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (email, body.name, body.role, hash_password(password), time.time(), stamp, admin["email"], stamp),
+        )
+        db.add_log(conn, admin["name"], "Δημιουργία χρήστη", note=f"{email} ({body.role})", ts=stamp)
+        db.sync_team_member(conn, email, admin["name"], ts=stamp)
+        # Αν το email δεν φύγει, η εξαίρεση ακυρώνει τη συναλλαγή και ο λογαριασμός δεν δημιουργείται.
+        send_or_fail(email, body.name, password, "invite")
+    return list_users(admin)
+
+
+@router.post("/api/admin/users/notify")
+def set_notify(body: NotifyChange, admin: Admin):
+    """Ενεργοποιεί ή σβήνει την ημερήσια υπενθύμιση για ελλιπείς ώρες (app/reminders.py)."""
+    email = body.email.strip().lower()
+    with db.write_tx() as conn:
+        user = conn.execute("SELECT notify_missing FROM users WHERE email=?", (email,)).fetchone()
+        if not user:
+            raise HTTPException(404, "Δεν βρέθηκε χρήστης με αυτό το email.")
+        if bool(user["notify_missing"]) != body.enabled:
+            conn.execute("UPDATE users SET notify_missing=? WHERE email=?", (int(body.enabled), email))
+            db.add_log(conn, admin["name"], "Αλλαγή ειδοποιήσεων",
+                       note=f"{email}: υπενθύμιση για ελλιπείς ώρες {'ενεργή' if body.enabled else 'ανενεργή'}")
+    return list_users(admin)
 
 
 @router.post("/api/admin/users/role")

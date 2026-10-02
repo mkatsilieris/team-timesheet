@@ -19,6 +19,8 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
       - SMTP_STARTTLS=${SMTP_STARTTLS:-}
       - COOKIE_SECURE=${COOKIE_SECURE:-1}  # το cookie στέλνεται μόνο σε HTTPS
+      - APP_URL=${APP_URL:-}              # σύνδεσμος της εφαρμογής μέσα στα emails
+      - REMINDER_TIME=${REMINDER_TIME:-09:00}   # ώρα της ημερήσιας υπενθύμισης ωρών (off = ανενεργή)
     restart: unless-stopped
 
   caddy:

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS users (
     reset_at      REAL NOT NULL DEFAULT 0,           -- epoch seconds της τελευταίας αποστολής κωδικού
     failed_logins INTEGER NOT NULL DEFAULT 0,
     locked_until  REAL NOT NULL DEFAULT 0,
+    notify_missing INTEGER NOT NULL DEFAULT 0,       -- email αν η προηγούμενη εργάσιμη έχει < 8 ώρες (ο admin το ανάβει)
     created_at    TEXT NOT NULL,
     approved_by   TEXT NOT NULL DEFAULT '',
     approved_at   TEXT NOT NULL DEFAULT ''
@@ -166,7 +167,11 @@ def migrate() -> None:
     της εποχής χωρίς λογαριασμούς. Το log δεν σβήνεται· καταγράφει τη διαγραφή."""
     with read_conn() as conn:
         cols = [r["name"] for r in conn.execute("PRAGMA table_info(team)")]
+        user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)")]
         done = conn.execute("SELECT 1 FROM meta WHERE key='team_from_users'").fetchone()
+    if "notify_missing" not in user_cols:
+        with write_tx() as conn:
+            conn.execute("ALTER TABLE users ADD COLUMN notify_missing INTEGER NOT NULL DEFAULT 0")
     if "email" in cols and done:
         return
     with write_tx() as conn:

@@ -1,7 +1,9 @@
 """Team Timesheet — FastAPI backend. Σερβίρει το UI (static/index.html) και ένα μικρό JSON API."""
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -9,8 +11,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, StringConstraints
 
-from . import auth, db
-from .auth import Member
+from . import auth, db, reminders
+from .auth import Admin, Member
 from .export import build_export
 
 STATIC = Path(__file__).parent / "static"
@@ -22,7 +24,9 @@ User = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    task = asyncio.create_task(reminders.scheduler())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Team Timesheet", lifespan=lifespan)
@@ -63,7 +67,8 @@ def state_payload() -> dict:
         return {
             "version": db.get_version(conn),
             "team": [
-                {"name": r["name"], "grade": r["grade"], "type": r["type"], "active": bool(r["active"])}
+                {"name": r["name"], "grade": r["grade"], "type": r["type"], "active": bool(r["active"]),
+                 "email": r["email"]}
                 for r in conn.execute("SELECT * FROM team ORDER BY name COLLATE NOCASE")
             ],
             "projects": [
@@ -109,11 +114,19 @@ def post_changes(ch: Changes, user: Member):
     Αν στο μεταξύ κάποιος άλλος άλλαξε την ίδια τιμή (τρέχουσα τιμή != oldH), κερδίζει η νεότερη αλλαγή
     και το log σημειώνει τη σύγκρουση.
     """
-    if ch.team and user["role"] != "admin":
+    is_admin = user["role"] == "admin"
+    if ch.team and not is_admin:
         raise HTTPException(403, "Τα στοιχεία των ατόμων τα αλλάζει μόνο διαχειριστής.")
     conflicts = 0
     now = db.now_stamp()
     with db.write_tx() as conn:
+        if not is_admin:
+            # Ένας απλός χρήστης γράφει μόνο τις δικές του ώρες· οι διαχειριστές γράφουν για όλους.
+            own = conn.execute("SELECT name FROM team WHERE email=?", (user["email"],)).fetchone()
+            others = {e.person for e in ch.entries if not own or e.person != own["name"]}
+            if others:
+                raise HTTPException(403, "Μπορείτε να αλλάξετε μόνο τις δικές σας ώρες. "
+                                         "Για ώρες άλλων απευθυνθείτε σε έναν διαχειριστή.")
         for t in ch.team:
             # Τα άτομα δημιουργούνται μόνο από την έγκριση χρηστών (db.sync_team_member)· εδώ μόνο αλλάζουν.
             before = conn.execute("SELECT * FROM team WHERE name=?", (t.name,)).fetchone()
@@ -165,6 +178,18 @@ def post_changes(ch: Changes, user: Member):
     out = state_payload()
     out["conflicts"] = conflicts
     return out
+
+
+class ReminderRun(BaseModel):
+    day: Optional[str] = Field(None, pattern=ISO_DATE)   # default: η προηγούμενη εργάσιμη
+    dry_run: bool = True
+
+
+@app.post("/api/admin/reminders/run")
+def run_reminders(body: ReminderRun, _: Admin):
+    """Προεπισκόπηση (dry_run) ή άμεση αποστολή των υπενθυμίσεων για ελλιπείς ώρες."""
+    day = date.fromisoformat(body.day) if body.day else reminders.previous_workday(date.today())
+    return reminders.run(day, dry_run=body.dry_run)
 
 
 @app.get("/api/export")

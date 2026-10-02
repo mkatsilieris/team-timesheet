@@ -48,6 +48,7 @@ td input{width:100%;min-width:110px;border:0;padding:7px 6px;text-align:center;f
 td input:focus{background:#fff;box-shadow:inset 0 0 0 2px var(--teal2)}
 td input.bad{box-shadow:inset 0 0 0 2px var(--err)}
 td input.pend{background:#FFF0B3}
+td input[readonly]{background:#fff;color:var(--muted)}
 .list td,.list th{padding:6px 10px;text-align:left}
 .list thead th{min-width:0}
 .list td.num,.list th.num{text-align:right}
@@ -146,8 +147,24 @@ td input.pend{background:#FFF0B3}
   </section>
 
   <section id="tab-users" class="hidden">
-    <p class="muted">Οι νέοι χρήστες ξεκινούν «Σε αναμονή» και δεν βλέπουν δεδομένα μέχρι να τους δώσετε πρόσβαση. Ένας «Διαχειριστής» μπορεί επιπλέον να εγκρίνει χρήστες.</p>
+    <div class="card">
+      <h3 style="margin-top:0">Νέος χρήστης</h3>
+      <div class="bar">
+        <input type="text" id="nuEmail" placeholder="onoma@netcompany.com" style="min-width:240px">
+        <input type="text" id="nuName" placeholder="ΕΠΩΝΥΜΟ Όνομα" style="min-width:200px">
+        <select id="nuRole"><option value="user">Χρήστης</option><option value="admin">Διαχειριστής</option></select>
+        <button id="nuAdd">Δημιουργία και αποστολή κωδικού</button>
+      </div>
+      <p class="muted">Ο λογαριασμός ενεργοποιείται αμέσως και ο χρήστης λαμβάνει τον κωδικό του στο email.</p>
+    </div>
+    <p class="muted">Οι χρήστες που κάνουν μόνοι τους εγγραφή ξεκινούν «Σε αναμονή» και δεν βλέπουν δεδομένα μέχρι να τους δώσετε πρόσβαση. Οι διαχειριστές εγκρίνουν χρήστες και γράφουν ή αλλάζουν ώρες για όλους.
+      Με την «Υπενθύμιση ωρών» ο χρήστης λαμβάνει email κάθε εργάσιμη στις 09:00, αν την προηγούμενη εργάσιμη έχει καταχωρίσει λιγότερες από 8 ώρες.</p>
     <div class="scroll"><table id="uTable" class="list"></table></div>
+    <div class="bar" style="margin-top:12px">
+      <button class="sec" id="remPreview">Ποιοι θα λάμβαναν υπενθύμιση για την προηγούμενη εργάσιμη;</button>
+      <button class="sec" id="remSend">Αποστολή υπενθυμίσεων τώρα</button>
+      <span class="muted" id="remOut"></span>
+    </div>
   </section>
   <section id="tab-hours" class="hidden">
     <div class="bar">
@@ -405,9 +422,13 @@ function shiftMonth(n){ const [y,m]=$("hMonth").value.split("-").map(Number); co
 $("hPrev").onclick = ()=>shiftMonth(-1); $("hNext").onclick = ()=>shiftMonth(1);
 for (const id of ["hPerson","hMonth","hWeekend","hInactive"]) $(id).addEventListener("change", ()=>{ if(id==="hPerson") try{localStorage.setItem("ts-person",$("hPerson").value)}catch(e){}; renderHours(); });
 
+// Το άτομο της ομάδας που αντιστοιχεί στον συνδεδεμένο χρήστη. Οι απλοί χρήστες αλλάζουν μόνο τις δικές του ώρες.
+const myPerson = () => team().find(t=>t.email===ME?.email)?.name || "";
+const canEdit = person => ME?.role === "admin" || person === myPerson();
 function renderHours(keepFocus){
   const people = team().filter(t=>t.active);
-  const sel = $("hPerson"); const want = sel.value || (()=>{ try{return localStorage.getItem("ts-person")}catch(e){return null} })() || me();
+  const sel = $("hPerson");
+  const want = sel.value || (ME.role==="admin" ? (()=>{ try{return localStorage.getItem("ts-person")}catch(e){return null} })() : null) || myPerson();
   sel.innerHTML = people.map(t=>`<option>${esc(t.name)}</option>`).join("");
   if (people.some(p=>p.name===want)) sel.value = want;
   const person = sel.value; const ym = $("hMonth").value;
@@ -416,27 +437,29 @@ function renderHours(keepFocus){
   const used = new Set(allEntries().filter(e=>e.person===person && e.date.startsWith(ym)).map(e=>e.project));
   const cols = projects().filter(p => p.active || used.has(p.name) || $("hInactive").checked);
   const focused = document.activeElement?.dataset?.k;
+  const ro = canEdit(person) ? "" : " readonly";
   let total = 0, dayCount = 0; const colTot = cols.map(()=>0);
   let h = `<thead><tr><th class="st c0">Ημερομηνία</th><th class="st c1">Ημέρα</th><th class="st c2">Σύνολο</th>${cols.map(c=>`<th title="${esc(c.name)}">${esc(c.name)}${c.active?"":" <span class='pill off'>ανενεργό</span>"}</th>`).join("")}</tr></thead><tbody>`;
   for (const d of days){
     const wd = dow(d); let rt = 0;
     const cells = cols.map((c,i)=>{ const k = key(d,person,c.name); const v = hoursOf(k); rt += v; colTot[i] += v;
       const pend = pending.entries.has(k) || (inflight && inflight.entries.has(k));
-      return `<td><input data-k="${esc(k)}" value="${fmtH(v)}" inputmode="decimal" class="${pend?"pend":""}"></td>`; }).join("");
+      return `<td><input data-k="${esc(k)}" value="${fmtH(v)}" inputmode="decimal" class="${pend?"pend":""}"${ro}></td>`; }).join("");
     total += rt; if (rt>0) dayCount++;
     h += `<tr class="${d===todayIso()?"today":""} ${[0,6].includes(wd)?"wk":""} ${wd===1?"mon":""}"><td class="st c0 d">${ddmm(d)}</td><td class="st c1 d">${GR_DAYS[wd]}</td><td class="st c2 tot ${rt>DAY_HOURS?"over":""}">${fmtH(rt)||"-"}</td>${cells}</tr>`;
   }
   h += `</tbody><tfoot><tr><td class="st c0">Σύνολο</td><td class="st c1"></td><td class="st c2">${fmtH(total)||"-"}</td>${colTot.map(v=>`<td>${fmtH(v)||"-"}</td>`).join("")}</tr></tfoot>`;
   $("hTable").innerHTML = h;
   const workdays = daysOfMonth(ym).filter(d=>![0,6].includes(dow(d))).length;
-  $("hKpi").innerHTML = `<div><b>${fmtH(total)||0}</b><span>ώρες τον μήνα</span></div><div><b>${fmtH(total/DAY_HOURS)||0}</b><span>man-days</span></div><div><b>${dayCount} / ${workdays}</b><span>ημέρες με καταχώριση / εργάσιμες</span></div>`;
+  $("hKpi").innerHTML = `<div><b>${fmtH(total)||0}</b><span>ώρες τον μήνα</span></div><div><b>${fmtH(total/DAY_HOURS)||0}</b><span>man-days</span></div><div><b>${dayCount} / ${workdays}</b><span>ημέρες με καταχώριση / εργάσιμες</span></div>` +
+    (ro ? `<div class="muted" style="align-self:center">Βλέπετε τις ώρες άλλου ατόμου. Τις αλλάζει μόνο ο ίδιος ή ένας διαχειριστής.</div>` : "");
   if (keepFocus && focused){ const el = $("hTable").querySelector(`input[data-k="${CSS.escape(focused)}"]`); if (el) el.focus(); }
 }
 function hasHoursOnDay(person, d){ return allEntries().some(e=>e.person===person && e.date===d); }
 
 $("hTable").addEventListener("change", e => {
   const el = e.target; if (!el.dataset.k) return;
-  if (!requireMe()){ el.value = fmtH(hoursOf(el.dataset.k)); return; }
+  if (!requireMe() || !canEdit(el.dataset.k.split("|")[1])){ el.value = fmtH(hoursOf(el.dataset.k)); return; }
   const raw = el.value.trim().replace(",", ".");
   const v = raw === "" ? 0 : Number(raw);
   if (!isFinite(v) || v < 0 || v > 24){ el.classList.add("bad"); el.title = "Γράψτε ώρες από 0 έως 24"; return; }
@@ -541,12 +564,41 @@ function drawLog(){
 const ROLE_LABEL = {pending:"Σε αναμονή", user:"Χρήστης", admin:"Διαχειριστής"};
 async function renderUsers(list){
   if (!list){ try{ list = await api("api/admin/users"); }catch(e){ setStatus("error","Οι χρήστες δεν φορτώθηκαν: " + e.message); return; } }
-  $("uTable").innerHTML = `<thead><tr><th>Όνομα</th><th>Email</th><th>Ρόλος</th><th>Εγγραφή</th><th>Έγκριση</th><th>Αλλαγή ρόλου</th></tr></thead><tbody>` +
+  $("uTable").innerHTML = `<thead><tr><th>Όνομα</th><th>Email</th><th>Ρόλος</th><th>Υπενθύμιση ωρών</th><th>Εγγραφή</th><th>Έγκριση</th><th>Αλλαγή ρόλου</th></tr></thead><tbody>` +
     list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td><span class="pill ${u.role}">${ROLE_LABEL[u.role]}</span></td>
+      <td><label><input type="checkbox" data-un="${esc(u.email)}" ${u.notify_missing?"checked":""}> ${u.notify_missing?"ενεργή":"ανενεργή"}</label></td>
       <td>${esc(u.created_at)}</td><td class="muted">${u.approved_at ? esc(u.approved_at)+" · "+esc(u.approved_by) : ""}</td>
       <td>${u.email===ME.email ? `<span class="muted">Ο δικός σας λογαριασμός</span>` :
         Object.keys(ROLE_LABEL).filter(r=>r!==u.role).map(r=>`<button class="sec" data-ue="${esc(u.email)}" data-ur="${r}">${r==="pending"?"Αφαίρεση πρόσβασης":"→ "+ROLE_LABEL[r]}</button>`).join(" ")}</td></tr>`).join("") + `</tbody>`;
 }
+$("uTable").addEventListener("change", async e => {
+  const email = e.target.dataset.un; if (!email) return;
+  e.target.disabled = true;
+  try{ renderUsers(await api("api/admin/users/notify", {method:"POST", body:JSON.stringify({email, enabled:e.target.checked})})); }
+  catch(err){ alertBar(err.message); e.target.checked = !e.target.checked; e.target.disabled = false; }
+});
+$("nuAdd").onclick = async () => {
+  const body = {email:$("nuEmail").value, name:$("nuName").value, role:$("nuRole").value};
+  $("nuAdd").disabled = true;
+  try{
+    renderUsers(await api("api/admin/users", {method:"POST", body:JSON.stringify(body)}));
+    alertBar(`Ο λογαριασμός δημιουργήθηκε και ο κωδικός στάλθηκε στο ${body.email.trim().toLowerCase()}.`);
+    $("nuEmail").value = ""; $("nuName").value = "";
+    await loadState();
+  }catch(err){ alertBar(err.message); }
+  finally{ $("nuAdd").disabled = false; }
+};
+async function reminderRun(dry){
+  if (!dry && !confirm("Να σταλούν τώρα οι υπενθυμίσεις για την προηγούμενη εργάσιμη;")) return;
+  try{
+    const r = await api("api/admin/reminders/run", {method:"POST", body:JSON.stringify({dry_run:dry})});
+    const who = r.targets.map(t=>`${t.person} (${fmtH(t.hours)||0} ώρες)`).join(", ");
+    $("remOut").textContent = `${ddmm(r.day)}: ` + (!r.targets.length ? "κανείς δεν έχει ελλιπείς ώρες με ενεργή υπενθύμιση." :
+      dry ? `θα λάμβαναν ${who}.` : `στάλθηκαν ${r.sent.length}` + (r.failed.length ? `, απέτυχαν ${r.failed.length} (${r.failed.join(", ")})` : "") + ".");
+  }catch(err){ $("remOut").textContent = err.message; }
+}
+$("remPreview").onclick = () => reminderRun(true);
+$("remSend").onclick = () => reminderRun(false);
 $("uTable").addEventListener("click", async e => {
   const email = e.target.dataset.ue, role = e.target.dataset.ur; if (!email) return;
   e.target.disabled = true;
