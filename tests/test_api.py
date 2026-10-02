@@ -1,20 +1,6 @@
 import io
 
-import pytest
-from fastapi.testclient import TestClient
 from openpyxl import load_workbook
-
-
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    import importlib
-    from app import db
-    importlib.reload(db)
-    from app import export, importer, main
-    importlib.reload(importer); importlib.reload(export); importlib.reload(main)
-    with TestClient(main.app) as c:
-        yield c
 
 
 def post(c, user, entries=(), team=(), projects=()):
@@ -44,7 +30,7 @@ def test_conflict_is_logged(client):
     post(client, "A", [{**e, "oldH": 0, "newH": 2}])
     s = post(client, "B", [{**e, "oldH": 0, "newH": 5}])  # ο B δεν είχε δει την αλλαγή του A
     assert s["conflicts"] == 1 and s["entries"][0]["hours"] == 5
-    assert "A" in client.get("/api/log").json()[0]["note"]
+    assert "Admin Test" in client.get("/api/log").json()[0]["note"]
 
 
 def test_validation(client):

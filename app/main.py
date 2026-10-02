@@ -9,7 +9,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, StringConstraints
 
-from . import db
+from . import auth, db
+from .auth import Member
 from .export import build_export
 
 STATIC = Path(__file__).parent / "static"
@@ -25,6 +26,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Team Timesheet", lifespan=lifespan)
+app.include_router(auth.router)
 
 
 # ---------- Μοντέλα ----------
@@ -49,7 +51,7 @@ class Project(BaseModel):
 
 
 class Changes(BaseModel):
-    user: User
+    user: Optional[User] = None   # αγνοείται· το ιστορικό γράφει το όνομα του συνδεδεμένου χρήστη
     entries: list[EntryChange] = []
     team: list[TeamMember] = []
     projects: list[Project] = []
@@ -83,25 +85,25 @@ def healthz():
 
 
 @app.get("/api/state")
-def get_state():
+def get_state(_: Member):
     return state_payload()
 
 
 @app.get("/api/version")
-def get_version():
+def get_version(_: Member):
     with db.read_conn() as conn:
         return {"version": db.get_version(conn)}
 
 
 @app.get("/api/log")
-def get_log(limit: int = Query(2000, ge=1, le=20000)):
+def get_log(_: Member, limit: int = Query(2000, ge=1, le=20000)):
     with db.read_conn() as conn:
         rows = conn.execute("SELECT * FROM log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
 
 
 @app.post("/api/changes")
-def post_changes(ch: Changes):
+def post_changes(ch: Changes, user: Member):
     """Εφαρμόζει μια δέσμη αλλαγών σε μία συναλλαγή και γράφει κάθε αλλαγή στο log.
 
     Αν στο μεταξύ κάποιος άλλος άλλαξε την ίδια τιμή (τρέχουσα τιμή != oldH), κερδίζει η νεότερη αλλαγή
@@ -120,7 +122,7 @@ def post_changes(ch: Changes):
             desc = f"Grade {t.grade}, {t.type}, {'ενεργό' if t.active else 'ανενεργό'}"
             if before:
                 desc += f" (πριν: Grade {before['grade']}, {before['type']}, {'ενεργό' if before['active'] else 'ανενεργό'})"
-            db.add_log(conn, ch.user, "Αλλαγή ατόμου" if before else "Νέο άτομο", person=t.name, note=desc, ts=now)
+            db.add_log(conn, user["name"], "Αλλαγή ατόμου" if before else "Νέο άτομο", person=t.name, note=desc, ts=now)
 
         for p in ch.projects:
             before = conn.execute("SELECT * FROM projects WHERE name=?", (p.name,)).fetchone()
@@ -131,7 +133,7 @@ def post_changes(ch: Changes):
                 nxt = conn.execute("SELECT COALESCE(MAX(sort),-1)+1 FROM projects").fetchone()[0]
                 conn.execute("INSERT INTO projects(name,active,sort) VALUES (?,?,?)", (p.name, int(p.active), nxt))
                 action = "Νέο project"
-            db.add_log(conn, ch.user, action, project=p.name, ts=now)
+            db.add_log(conn, user["name"], action, project=p.name, ts=now)
 
         for e in ch.entries:
             row = conn.execute(
@@ -152,12 +154,12 @@ def post_changes(ch: Changes):
                     "INSERT INTO entries(date,person,project,hours,updated_by,updated_at) VALUES (?,?,?,?,?,?) "
                     "ON CONFLICT(date,person,project) DO UPDATE SET hours=excluded.hours, "
                     "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                    (e.date, e.person, e.project, new, ch.user, now),
+                    (e.date, e.person, e.project, new, user["name"], now),
                 )
             else:
                 conn.execute("DELETE FROM entries WHERE date=? AND person=? AND project=?", (e.date, e.person, e.project))
             action = "Προσθήκη" if cur == 0 else ("Διαγραφή" if new == 0 else "Αλλαγή")
-            db.add_log(conn, ch.user, action, e.date, e.person, e.project, cur, new, note, ts=now)
+            db.add_log(conn, user["name"], action, e.date, e.person, e.project, cur, new, note, ts=now)
 
     out = state_payload()
     out["conflicts"] = conflicts
@@ -166,6 +168,7 @@ def post_changes(ch: Changes):
 
 @app.get("/api/export")
 def export(
+    _: Member,
     date_from: Optional[str] = Query(None, alias="from", pattern=ISO_DATE),
     date_to: Optional[str] = Query(None, alias="to", pattern=ISO_DATE),
 ):
@@ -181,7 +184,7 @@ def export(
 
 
 @app.get("/api/backup")
-def backup():
+def backup(_: Member):
     """Κατεβάζει αντίγραφο της SQLite βάσης (συνεπές, μέσω του backup API της SQLite)."""
     import sqlite3
     import tempfile

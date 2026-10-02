@@ -61,6 +61,13 @@ td input.pend{background:#FFF0B3}
 @media (max-width:900px){.grid2{grid-template-columns:1fr}}
 .hidden{display:none!important}
 #banner{background:#FFF4CE;border-bottom:1px solid #E8D48A;padding:8px 16px;font-size:13px}
+.authcard{max-width:420px;margin:40px auto}
+.authcard h2{color:var(--teal);margin-top:0}
+.authcard label{display:block;margin:10px 0}
+.authcard label input{display:block;width:100%;margin-top:4px;font-family:inherit;font-size:14px;padding:7px 8px;border:1px solid var(--line);border-radius:4px}
+.authcard a{color:var(--teal2)}
+.msg-err{color:var(--err)}.msg-ok{color:#2E8B57}
+.pill.pending{background:#FCE8C3;color:#8A5A00}.pill.admin{background:var(--teal);color:#fff}
 </style>
 
 </head>
@@ -68,11 +75,16 @@ td input.pend{background:#FFF0B3}
 <header>
   <h1>Timesheet ομάδας</h1>
   <span class="grow"></span>
-  <label style="font-size:12px">Είμαι: <input id="me" list="teamNames" placeholder="Το όνομά σας"></label>
-  <datalist id="teamNames"></datalist>
-  <span id="status">Φόρτωση…</span>
-  <button id="btnSave" class="sec">Αποθήκευση</button>
-  <button id="btnExport" class="sec" title="Λήψη όλων των δεδομένων σε Excel">Λήψη Excel</button>
+  <span id="dataBtns" class="hidden" style="display:contents">
+    <span id="status">Φόρτωση…</span>
+    <button id="btnSave" class="sec">Αποθήκευση</button>
+    <button id="btnExport" class="sec" title="Λήψη όλων των δεδομένων σε Excel">Λήψη Excel</button>
+  </span>
+  <span id="userBox" class="hidden" style="display:contents">
+    <span id="whoami" style="font-size:12px"></span>
+    <button id="btnPwd" class="sec">Αλλαγή κωδικού</button>
+    <button id="btnLogout" class="sec">Αποσύνδεση</button>
+  </span>
 </header>
 <div id="banner" class="hidden"></div>
 <nav id="tabs" class="hidden">
@@ -80,11 +92,62 @@ td input.pend{background:#FFF0B3}
   <a data-tab="summary">Σύνοψη</a>
   <a data-tab="setup">Ομάδα &amp; Projects</a>
   <a data-tab="log">Ιστορικό αλλαγών</a>
+  <a data-tab="users" id="tabUsers" class="hidden">Χρήστες</a>
 </nav>
 <main>
   <section id="start" class="empty">
     <h2>Φόρτωση δεδομένων…</h2>
     <p id="startErr" style="color:var(--err)"></p>
+  </section>
+
+  <section id="auth" class="hidden">
+    <div class="card authcard">
+      <div id="authLogin">
+        <h2>Σύνδεση</h2>
+        <label>Email<input type="email" id="lgEmail" autocomplete="username" placeholder="onoma@netcompany.com"></label>
+        <label>Κωδικός<input type="password" id="lgPass" autocomplete="current-password"></label>
+        <button id="lgBtn">Σύνδεση</button>
+        <p class="muted"><a href="#" data-auth="register">Δεν έχω λογαριασμό: εγγραφή</a> · <a href="#" data-auth="forgot">Ξέχασα τον κωδικό</a></p>
+      </div>
+      <div id="authRegister" class="hidden">
+        <h2>Εγγραφή</h2>
+        <p class="muted">Θα λάβετε τον κωδικό πρόσβασης στο εταιρικό σας email. Μετά την εγγραφή, ένας διαχειριστής πρέπει να εγκρίνει την πρόσβασή σας.</p>
+        <label>Email<input type="email" id="rgEmail" placeholder="onoma@netcompany.com"></label>
+        <label>Ονοματεπώνυμο<input type="text" id="rgName" placeholder="ΕΠΩΝΥΜΟ Όνομα"></label>
+        <button id="rgBtn">Εγγραφή</button>
+        <p class="muted"><a href="#" data-auth="login">Έχω ήδη λογαριασμό: σύνδεση</a></p>
+      </div>
+      <div id="authForgot" class="hidden">
+        <h2>Νέος κωδικός</h2>
+        <p class="muted">Θα σας στείλουμε νέο κωδικό στο email. Ο παλιός κωδικός ισχύει μέχρι να συνδεθείτε με τον νέο.</p>
+        <label>Email<input type="email" id="fgEmail" placeholder="onoma@netcompany.com"></label>
+        <button id="fgBtn">Αποστολή νέου κωδικού</button>
+        <p class="muted"><a href="#" data-auth="login">Πίσω στη σύνδεση</a></p>
+      </div>
+      <p id="authMsg"></p>
+    </div>
+  </section>
+
+  <section id="pending" class="empty hidden">
+    <h2>Η πρόσβασή σας περιμένει έγκριση</h2>
+    <p>Ο λογαριασμός σας δημιουργήθηκε, αλλά ένας διαχειριστής δεν έχει εγκρίνει ακόμα την πρόσβασή σας. Όταν την εγκρίνει, ανανεώστε τη σελίδα για να συνεχίσετε.</p>
+    <p><button id="pendRetry" class="sec">Έλεγχος ξανά</button></p>
+  </section>
+
+  <section id="pwd" class="hidden">
+    <div class="card authcard">
+      <h2>Αλλαγή κωδικού</h2>
+      <label>Τωρινός κωδικός<input type="password" id="pwCur" autocomplete="current-password"></label>
+      <label>Νέος κωδικός (τουλάχιστον 10 χαρακτήρες)<input type="password" id="pwNew" autocomplete="new-password"></label>
+      <label>Επανάληψη νέου κωδικού<input type="password" id="pwNew2" autocomplete="new-password"></label>
+      <button id="pwBtn">Αλλαγή κωδικού</button> <button id="pwCancel" class="sec">Άκυρο</button>
+      <p id="pwMsg"></p>
+    </div>
+  </section>
+
+  <section id="tab-users" class="hidden">
+    <p class="muted">Οι νέοι χρήστες ξεκινούν «Σε αναμονή» και δεν βλέπουν δεδομένα μέχρι να τους δώσετε πρόσβαση. Ένας «Διαχειριστής» μπορεί επιπλέον να εγκρίνει χρήστες.</p>
+    <div class="scroll"><table id="uTable" class="list"></table></div>
   </section>
   <section id="tab-hours" class="hidden">
     <div class="bar">
@@ -175,6 +238,8 @@ const ddmm = iso => iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4);
 /* ================= API ================= */
 async function api(path, opts={}){
   const r = await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
+  if (r.status === 401 && !path.startsWith("api/auth/")){ ME = null; showScreen("auth"); }
+  if (r.status === 403 && ME && ME.role !== "pending" && !path.startsWith("api/admin/")){ boot(); }
   if (!r.ok){ let msg = r.status + " " + r.statusText; try{ const j = await r.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); }catch(e){} throw new Error(msg); }
   return r.json();
 }
@@ -251,16 +316,70 @@ function setHours(date, person, project, h){
   scheduleSave();
 }
 
-/* ================= Χρήστης ================= */
-function me(){ return $("me").value.trim(); }
-$("me").value = (()=>{ try{ return localStorage.getItem("ts-me")||""; }catch(e){ return ""; } })();
-$("me").addEventListener("change", ()=>{ try{ localStorage.setItem("ts-me", me()); }catch(e){} banner(); });
-function banner(){
-  const b = $("banner");
-  if (db && !me()){ b.textContent = "Γράψτε το όνομά σας στο πεδίο «Είμαι» πάνω δεξιά. Κάθε αλλαγή καταγράφεται στο ιστορικό με αυτό το όνομα."; b.classList.remove("hidden"); }
-  else b.classList.add("hidden");
+/* ================= Χρήστης & είσοδος ================= */
+let ME = null;                       // {email, name, role} του συνδεδεμένου χρήστη
+function me(){ return ME ? ME.name : ""; }
+function banner(){ $("banner").classList.add("hidden"); }
+function requireMe(){ return !!ME; }
+
+// Ποια οθόνη φαίνεται: auth | pending | pwd | app
+function showScreen(s){
+  const inApp = s === "app";
+  for (const id of ["auth","pending","pwd"]) $(id).classList.toggle("hidden", id !== s);
+  $("start").classList.add("hidden");
+  $("tabs").classList.toggle("hidden", !inApp);
+  $("dataBtns").classList.toggle("hidden", !inApp);
+  $("userBox").classList.toggle("hidden", !ME);
+  $("btnPwd").classList.toggle("hidden", s === "pwd");
+  if (ME) $("whoami").textContent = ME.name + (ME.role === "admin" ? " (διαχειριστής)" : "");
+  $("tabUsers").classList.toggle("hidden", !(ME && ME.role === "admin"));
+  if (!inApp) for (const t of ["hours","summary","setup","log","users"]) $("tab-"+t).classList.add("hidden");
+  if (inApp) showTab(currentTab === "users" && ME.role !== "admin" ? "hours" : currentTab);
 }
-function requireMe(){ if (me()) return true; banner(); $("me").focus(); return false; }
+function msg(el, text, ok){ $(el).textContent = text; $(el).className = ok ? "msg-ok" : "msg-err"; }
+function authView(v){
+  for (const [k,id] of [["login","authLogin"],["register","authRegister"],["forgot","authForgot"]]) $(id).classList.toggle("hidden", k !== v);
+  $("authMsg").textContent = "";
+  const email = $("lgEmail").value || $("rgEmail").value || $("fgEmail").value;
+  for (const id of ["lgEmail","rgEmail","fgEmail"]) if (!$(id).value) $(id).value = email;
+}
+document.querySelectorAll("[data-auth]").forEach(a => a.onclick = e => { e.preventDefault(); authView(a.dataset.auth); });
+
+async function authCall(btn, path, body, onOk){
+  $(btn).disabled = true;
+  try{ const r = await api(path, {method:"POST", body:JSON.stringify(body)}); await onOk(r); }
+  catch(e){ msg("authMsg", e.message); }
+  finally{ $(btn).disabled = false; }
+}
+$("lgBtn").onclick = () => authCall("lgBtn", "api/auth/login", {email:$("lgEmail").value, password:$("lgPass").value},
+  async r => { $("lgPass").value = ""; ME = r; await enter(); });
+$("lgPass").addEventListener("keydown", e => { if (e.key === "Enter") $("lgBtn").click(); });
+$("rgBtn").onclick = () => authCall("rgBtn", "api/auth/register", {email:$("rgEmail").value, name:$("rgName").value},
+  r => { $("lgEmail").value = $("rgEmail").value; authView("login"); msg("authMsg", r.message + " Συνδεθείτε με αυτόν.", true); });
+$("fgBtn").onclick = () => authCall("fgBtn", "api/auth/forgot", {email:$("fgEmail").value},
+  r => { $("lgEmail").value = $("fgEmail").value; authView("login"); msg("authMsg", r.message, true); });
+
+$("btnLogout").onclick = async () => {
+  await save();
+  try{ await api("api/auth/logout", {method:"POST"}); }catch(e){}
+  ME = null; db = null; authView("login"); showScreen("auth");
+};
+$("pendRetry").onclick = () => boot();
+
+let pwdReturn = "app";
+$("btnPwd").onclick = () => { pwdReturn = ME.role === "pending" ? "pending" : "app"; for (const id of ["pwCur","pwNew","pwNew2"]) $(id).value = ""; $("pwMsg").textContent = ""; showScreen("pwd"); };
+$("pwCancel").onclick = () => showScreen(pwdReturn);
+$("pwBtn").onclick = async () => {
+  if ($("pwNew").value !== $("pwNew2").value){ msg("pwMsg", "Οι δύο νέοι κωδικοί δεν είναι ίδιοι."); return; }
+  if ($("pwNew").value.length < 10){ msg("pwMsg", "Ο νέος κωδικός πρέπει να έχει τουλάχιστον 10 χαρακτήρες."); return; }
+  $("pwBtn").disabled = true;
+  try{
+    const r = await api("api/auth/password", {method:"POST", body:JSON.stringify({current:$("pwCur").value, new:$("pwNew").value})});
+    for (const id of ["pwCur","pwNew","pwNew2"]) $(id).value = "";
+    msg("pwMsg", r.message, true);
+  }catch(e){ msg("pwMsg", e.message); }
+  finally{ $("pwBtn").disabled = false; }
+};
 
 /* ================= Status ================= */
 function setStatus(kind, text){ const s=$("status"); s.className = kind; s.textContent = text; }
@@ -270,7 +389,7 @@ let currentTab = "hours";
 function showTab(t){
   currentTab = t; try{ localStorage.setItem("ts-tab",t); }catch(e){}
   document.querySelectorAll("#tabs a").forEach(a=>a.classList.toggle("on", a.dataset.tab===t));
-  for (const s of ["hours","summary","setup","log"]) $("tab-"+s).classList.toggle("hidden", s!==t);
+  for (const s of ["hours","summary","setup","log","users"]) $("tab-"+s).classList.toggle("hidden", s!==t);
   renderAll();
 }
 $("tabs").addEventListener("click", e => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
@@ -278,11 +397,11 @@ $("tabs").addEventListener("click", e => { if (e.target.dataset.tab) showTab(e.t
 function renderAll(keepFocus){
   if (!db) return;
   banner();
-  $("teamNames").innerHTML = team().map(t=>`<option value="${esc(t.name)}">`).join("");
   if (currentTab==="hours") renderHours(keepFocus);
   if (currentTab==="summary") renderSummary();
   if (currentTab==="setup") renderSetup();
   if (currentTab==="log") renderLog();
+  if (currentTab==="users") renderUsers();
 }
 
 /* ================= Καρτέλα: Ώρες ================= */
@@ -424,6 +543,23 @@ function drawLog(){
     list.slice(0,1000).map(l=>`<tr><td>${esc(l.ts)}</td><td>${esc(l.user)}</td><td>${esc(l.action)}</td><td>${l.date?ddmm(l.date):""}</td><td>${esc(l.person)}</td><td>${esc(l.project)}</td><td class="num">${n(l.old_hours)}</td><td class="num">${n(l.new_hours)}</td><td class="muted">${esc(l.note)}</td></tr>`).join("") + `</tbody>`;
 }
 
+/* ================= Καρτέλα: Χρήστες (μόνο διαχειριστές) ================= */
+const ROLE_LABEL = {pending:"Σε αναμονή", user:"Χρήστης", admin:"Διαχειριστής"};
+async function renderUsers(list){
+  if (!list){ try{ list = await api("api/admin/users"); }catch(e){ setStatus("error","Οι χρήστες δεν φορτώθηκαν: " + e.message); return; } }
+  $("uTable").innerHTML = `<thead><tr><th>Όνομα</th><th>Email</th><th>Ρόλος</th><th>Εγγραφή</th><th>Έγκριση</th><th>Αλλαγή ρόλου</th></tr></thead><tbody>` +
+    list.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td><span class="pill ${u.role}">${ROLE_LABEL[u.role]}</span></td>
+      <td>${esc(u.created_at)}</td><td class="muted">${u.approved_at ? esc(u.approved_at)+" · "+esc(u.approved_by) : ""}</td>
+      <td>${u.email===ME.email ? `<span class="muted">Ο δικός σας λογαριασμός</span>` :
+        Object.keys(ROLE_LABEL).filter(r=>r!==u.role).map(r=>`<button class="sec" data-ue="${esc(u.email)}" data-ur="${r}">${r==="pending"?"Αφαίρεση πρόσβασης":"→ "+ROLE_LABEL[r]}</button>`).join(" ")}</td></tr>`).join("") + `</tbody>`;
+}
+$("uTable").addEventListener("click", async e => {
+  const email = e.target.dataset.ue, role = e.target.dataset.ur; if (!email) return;
+  e.target.disabled = true;
+  try{ renderUsers(await api("api/admin/users/role", {method:"POST", body:JSON.stringify({email, role})})); }
+  catch(err){ alertBar(err.message); e.target.disabled = false; }
+});
+
 /* ================= Λήψη Excel ================= */
 function download(url){ const a = document.createElement("a"); a.href = url; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }
 $("btnExport").onclick = async () => { await save(); download("api/export"); };
@@ -431,13 +567,22 @@ $("sExport").onclick = async () => { await save(); download(`api/export?from=${$
 
 /* ================= Έναρξη ================= */
 $("btnSave").onclick = () => { saveError = null; save(); };
-(async () => {
+currentTab = (()=>{ try{ return localStorage.getItem("ts-tab"); }catch(e){ return null; } })() || "hours";
+async function enter(){
+  if (ME.role === "pending"){ showScreen("pending"); return; }
+  await loadState();
+  showScreen("app");
+}
+async function boot(){
   try{
-    await loadState();
-    $("start").classList.add("hidden"); $("tabs").classList.remove("hidden");
-    showTab((()=>{ try{ return localStorage.getItem("ts-tab"); }catch(e){ return null; } })() || "hours");
-  }catch(e){ $("startErr").textContent = "Ο server δεν απάντησε: " + e.message; setStatus("error","Χωρίς σύνδεση"); }
-})();
+    const r = await fetch("api/auth/me");
+    if (r.status === 401){ ME = null; authView("login"); showScreen("auth"); return; }
+    if (!r.ok) throw new Error(r.status + " " + r.statusText);
+    ME = await r.json();
+    await enter();
+  }catch(e){ $("start").classList.remove("hidden"); $("startErr").textContent = "Ο server δεν απάντησε: " + e.message; setStatus("error","Χωρίς σύνδεση"); }
+}
+boot();
 </script>
 </body>
 </html>

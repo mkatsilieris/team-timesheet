@@ -3,10 +3,38 @@ services:
     build: .
     image: team-timesheet:latest
     container_name: team-timesheet
-    ports:
-      - "9999:9999"
+    # Χωρίς πόρτα στον host: η εφαρμογή φαίνεται μόνο μέσα από το Caddy (HTTPS).
+    expose:
+      - "9999"
     volumes:
       - ./data:/data          # timesheet.db ζει εδώ — κάντε backup αυτόν τον φάκελο
     environment:
       - TZ=Europe/Athens
+      # Οι τιμές έρχονται από το αρχείο .env δίπλα σε αυτό (δεν μπαίνει στο git). Δείτε το .env.example.
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+      - SMTP_HOST=${SMTP_HOST:-}          # κενό = ο κωδικός γράφεται στα logs αντί να σταλεί
+      - SMTP_PORT=${SMTP_PORT:-25}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_STARTTLS=${SMTP_STARTTLS:-}
+      - COOKIE_SECURE=${COOKIE_SECURE:-1}  # το cookie στέλνεται μόνο σε HTTPS
     restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: team-timesheet-caddy
+    depends_on:
+      - timesheet
+    ports:
+      - "9443:443"            # https://<host>:9443
+      - "9999:80"             # η παλιά διεύθυνση HTTP κάνει redirect στο HTTPS
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # κρατά την τοπική CA· αν χαθεί, οι χρήστες βλέπουν ξανά προειδοποίηση
+    environment:
+      - TLS_HOSTS=${TLS_HOSTS:-localhost}
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

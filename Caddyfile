@@ -1,0 +1,19 @@
+# HTTPS μπροστά από την εφαρμογή. Το πιστοποιητικό το εκδίδει η τοπική CA του Caddy (tls internal),
+# οπότε ο browser θα προειδοποιήσει μέχρι να εγκατασταθεί το root.crt της (δείτε README).
+# Όταν υπάρξει όνομα και πιστοποιητικό από την εταιρική CA, αλλάζει μόνο η γραμμή `tls`.
+{
+	auto_https disable_redirects
+}
+
+# TLS_HOSTS: τα ονόματα/IP με τα οποία ανοίγει η εφαρμογή, χωρισμένα με κόμμα (από το .env).
+{$TLS_HOSTS:localhost} {
+	tls internal
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy timesheet:9999
+}
+
+# Η παλιά διεύθυνση http://...:9999 στέλνει στο HTTPS.
+http:// {
+	redir https://{host}:9443{uri} permanent
+}
