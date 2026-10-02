@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Timesheet</title>
+<style>
+:root{--teal:#0F4C5C;--teal2:#1F7A8C;--light:#E6F0F2;--input:#FFFBEA;--line:#D5DDE0;--muted:#5F6B70;--warn:#FCD5B4;--err:#C00000;--bg:#F6F8F9}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1d2528;background:var(--bg)}
+header{background:var(--teal);color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+header h1{font-size:17px;margin:0 12px 0 0}
+header .grow{flex:1}
+header input{padding:5px 8px;border-radius:4px;border:0;width:200px}
+#status{font-size:12px;padding:4px 10px;border-radius:12px;background:rgba(255,255,255,.15)}
+#status.dirty{background:#F2C14E;color:#222}#status.error{background:#E05252}#status.ok{background:#2E8B57}
+button{font-family:inherit;font-size:13px;padding:6px 12px;border-radius:4px;border:1px solid var(--teal);background:var(--teal);color:#fff;cursor:pointer}
+button.sec{background:#fff;color:var(--teal)}
+button:disabled{opacity:.5;cursor:default}
+header button{border-color:#fff}
+nav{display:flex;gap:2px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line)}
+nav a{padding:10px 14px;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;text-decoration:none}
+nav a.on{color:var(--teal);border-color:var(--teal);font-weight:bold}
+main{padding:14px 16px}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px}
+.bar label{display:flex;gap:6px;align-items:center}
+select,input[type=month],input[type=date],input[type=text],input[type=number]{font-family:inherit;font-size:13px;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:#fff}
+.card{background:#fff;border:1px solid var(--line);border-radius:6px;padding:14px;margin-bottom:14px}
+.kpi{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px}
+.kpi div{background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 14px}
+.kpi b{display:block;font-size:20px;color:var(--teal)}
+.kpi span{font-size:12px;color:var(--muted)}
+.scroll{overflow:auto;max-height:calc(100vh - 250px);border:1px solid var(--line);border-radius:6px;background:#fff}
+table{border-collapse:separate;border-spacing:0;font-size:13px}
+th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0}
+thead th{position:sticky;top:0;z-index:2;background:var(--teal);color:#fff;padding:8px 6px;font-weight:bold;min-width:110px;max-width:150px;white-space:normal;vertical-align:bottom}
+tfoot td{position:sticky;bottom:0;z-index:2;background:var(--light);font-weight:bold;padding:6px;text-align:center}
+.st{position:sticky;z-index:1;background:#fff}
+thead .st{z-index:3;background:var(--teal)} tfoot .st{z-index:3;background:var(--light)}
+.c0{left:0;min-width:96px}.c1{left:96px;min-width:52px}.c2{left:148px;min-width:66px;border-right:2px solid var(--teal2)}
+td.d{padding:6px 8px;white-space:nowrap}
+td.tot{text-align:center;font-weight:bold;padding:6px}
+td.tot.over{background:var(--warn)}
+tr.today td.d{color:var(--err);font-weight:bold}
+tr.wk td{background:#F0F0F0}
+tr.mon td.d{border-top:2px solid var(--teal2)}
+td input{width:100%;min-width:110px;border:0;padding:7px 6px;text-align:center;font-family:inherit;font-size:13px;background:var(--input);outline:none}
+td input:focus{background:#fff;box-shadow:inset 0 0 0 2px var(--teal2)}
+td input.bad{box-shadow:inset 0 0 0 2px var(--err)}
+td input.pend{background:#FFF0B3}
+.list td,.list th{padding:6px 10px;text-align:left}
+.list thead th{min-width:0}
+.list td.num,.list th.num{text-align:right}
+.muted{color:var(--muted);font-size:12px}
+.empty{padding:40px;text-align:center}
+.empty h2{color:var(--teal)}
+.empty p{max-width:640px;margin:10px auto;line-height:1.5}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--light);color:var(--teal)}
+.pill.off{background:#eee;color:#888}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+.hidden{display:none!important}
+#banner{background:#FFF4CE;border-bottom:1px solid #E8D48A;padding:8px 16px;font-size:13px}
+</style>
+
+</head>
+<body>
+<header>
+  <h1>Timesheet ομάδας</h1>
+  <span class="grow"></span>
+  <label style="font-size:12px">Είμαι: <input id="me" list="teamNames" placeholder="Το όνομά σας"></label>
+  <datalist id="teamNames"></datalist>
+  <span id="status">Φόρτωση…</span>
+  <button id="btnSave" class="sec">Αποθήκευση</button>
+  <button id="btnExport" class="sec" title="Λήψη όλων των δεδομένων σε Excel">Λήψη Excel</button>
+</header>
+<div id="banner" class="hidden"></div>
+<nav id="tabs" class="hidden">
+  <a data-tab="hours" class="on">Ώρες</a>
+  <a data-tab="summary">Σύνοψη</a>
+  <a data-tab="setup">Ομάδα &amp; Projects</a>
+  <a data-tab="log">Ιστορικό αλλαγών</a>
+</nav>
+<main>
+  <section id="start" class="empty">
+    <h2>Φόρτωση δεδομένων…</h2>
+    <p id="startErr" style="color:var(--err)"></p>
+  </section>
+  <section id="tab-hours" class="hidden">
+    <div class="bar">
+      <label>Άτομο <select id="hPerson"></select></label>
+      <label>Μήνας <input type="month" id="hMonth"></label>
+      <button class="sec" id="hPrev">‹</button><button class="sec" id="hNext">›</button>
+      <label><input type="checkbox" id="hWeekend"> Σαββατοκύριακα</label>
+      <label><input type="checkbox" id="hInactive"> Ανενεργά projects</label>
+    </div>
+    <div class="kpi" id="hKpi"></div>
+    <div class="scroll"><table id="hTable"></table></div>
+    <p class="muted">Γράψτε ώρες (π.χ. 7.5 ή 7,5). Κενό ή 0 σβήνει την καταχώριση. Τα βελάκια ↑ ↓ και το Enter μετακινούν τον κέρσορα. Οι αλλαγές αποθηκεύονται αυτόματα στον server.</p>
+  </section>
+
+  <section id="tab-summary" class="hidden">
+    <div class="bar">
+      <label>Από <input type="date" id="sFrom"></label>
+      <label>Έως <input type="date" id="sTo"></label>
+      <button class="sec" data-range="month">Τρέχων μήνας</button>
+      <button class="sec" data-range="prev">Προηγούμενος μήνας</button>
+      <button class="sec" data-range="year">Τρέχον έτος</button>
+      <label>Μονάδα <select id="sUnit"><option value="h">Ώρες</option><option value="md">Man-days</option></select></label>
+      <button id="sExport">Λήψη Excel για αυτό το διάστημα</button>
+    </div>
+    <div class="scroll"><table id="sTable" class="list"></table></div>
+  </section>
+
+  <section id="tab-setup" class="hidden">
+    <div class="grid2">
+      <div class="card">
+        <h3 style="margin-top:0">Ομάδα</h3>
+        <div class="bar">
+          <input type="text" id="nName" placeholder="ΕΠΩΝΥΜΟ Όνομα">
+          <input type="number" id="nGrade" placeholder="Grade" style="width:80px">
+          <select id="nType"><option>DEV</option><option>PM</option><option>BA</option><option>QA</option><option>ARCH</option></select>
+          <button id="nAdd">Προσθήκη ατόμου</button>
+        </div>
+        <table class="list" id="teamTable"></table>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Projects</h3>
+        <div class="bar">
+          <input type="text" id="pName" placeholder="Όνομα project" style="min-width:240px">
+          <button id="pAdd">Προσθήκη project</button>
+        </div>
+        <table class="list" id="projTable"></table>
+      </div>
+    </div>
+    <p class="muted">Τα ονόματα δεν αλλάζουν, γιατί οι καταχωρίσεις ωρών είναι συνδεδεμένες με αυτά. Ένα άτομο ή project που δεν χρειάζεστε πια το κάνετε ανενεργό· οι ώρες του μένουν στο ιστορικό και στη σύνοψη.</p>
+  </section>
+
+  <section id="tab-log" class="hidden">
+    <div class="bar">
+      <label>Άτομο <select id="lPerson"></select></label>
+      <label>Αναζήτηση <input type="text" id="lSearch" placeholder="project, χρήστης…"></label>
+      <span class="muted" id="lCount"></span>
+    </div>
+    <div class="scroll"><table id="lTable" class="list"></table></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* ================= Ρυθμίσεις ================= */
+const DAY_HOURS = 8;
+const GR_DAYS = ["Κυρ","Δευ","Τρι","Τετ","Πεμ","Παρ","Σαβ"];
+
+/* ================= Κατάσταση ================= */
+let db = null;                       // τελευταία κατάσταση από τον server
+let pending = newPending();          // αλλαγές που δεν έχουν σταλεί ακόμα
+let inflight = null;                 // αλλαγές που στέλνονται αυτή τη στιγμή
+let saving = false, saveTimer = null, saveError = null;
+
+function newPending(){ return {entries:new Map(), team:new Map(), projects:new Map()}; }
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const key = (d,p,j) => d+"|"+p+"|"+j;
+const fmtH = h => h ? (Math.round(h*100)/100).toString().replace(".",",") : "";
+
+/* ================= Ημερομηνίες ================= */
+function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+const todayIso = () => isoLocal(new Date());
+function daysOfMonth(ym){ const [y,m]=ym.split("-").map(Number); const out=[]; const n=new Date(y,m,0).getDate();
+  for(let i=1;i<=n;i++) out.push(`${ym}-${String(i).padStart(2,"0")}`); return out; }
+const dow = iso => new Date(iso+"T12:00:00").getDay();
+const ddmm = iso => iso.slice(8,10)+"/"+iso.slice(5,7)+"/"+iso.slice(0,4);
+
+/* ================= API ================= */
+async function api(path, opts={}){
+  const r = await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
+  if (!r.ok){ let msg = r.status + " " + r.statusText; try{ const j = await r.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); }catch(e){} throw new Error(msg); }
+  return r.json();
+}
+function applyState(s){
+  db = {version:s.version, team:s.team, projects:s.projects, entries:new Map()};
+  for (const e of s.entries) db.entries.set(key(e.date,e.person,e.project), e);
+}
+async function loadState(){
+  applyState(await api("api/state"));
+  setStatus("ok","Φορτώθηκε " + new Date().toTimeString().slice(0,5));
+  renderAll();
+}
+
+/* ================= Αποθήκευση ================= */
+function isDirty(){ return pending.entries.size + pending.team.size + pending.projects.size > 0; }
+function scheduleSave(){ setStatus("dirty","Μη αποθηκευμένες αλλαγές"); clearTimeout(saveTimer); saveTimer = setTimeout(save, 1000); }
+
+async function save(){
+  clearTimeout(saveTimer);
+  if (!db || !isDirty()) return;
+  if (saving){ scheduleSave(); return; }
+  saving = true; inflight = pending; pending = newPending();
+  setStatus("dirty","Αποθήκευση…");
+  try{
+    const body = {user: me(), entries:[...inflight.entries.values()], team:[...inflight.team.values()], projects:[...inflight.projects.values()]};
+    const res = await api("api/changes", {method:"POST", body:JSON.stringify(body)});
+    applyState(res); inflight = null; saveError = null;
+    setStatus(isDirty()?"dirty":"ok", (isDirty()?"Μη αποθηκευμένες αλλαγές":"Αποθηκεύτηκε " + new Date().toTimeString().slice(0,5)) + (res.conflicts?` · ${res.conflicts} σύγκρουση(εις), δείτε το Ιστορικό`:""));
+  }catch(e){
+    // Οι αλλαγές δεν χάνονται: επιστρέφουν στη λίστα αναμονής (οι νεότερες κερδίζουν).
+    for (const kind of ["entries","team","projects"]) for (const [k,v] of inflight[kind]) if (!pending[kind].has(k)) pending[kind].set(k,v);
+    inflight = null; saveError = e;
+    setStatus("error", "Δεν αποθηκεύτηκε: " + e.message + " — πατήστε Αποθήκευση για νέα προσπάθεια");
+  }finally{
+    saving = false;
+    renderAll(true);
+    if (isDirty() && !saveError) scheduleSave();
+  }
+}
+
+async function checkExternal(){
+  if (!db || saving || isDirty()) return;
+  try{ const v = await api("api/version"); if (v.version !== db.version){ await loadState(); setStatus("ok","Φορτώθηκαν αλλαγές άλλων " + new Date().toTimeString().slice(0,5)); } }catch(e){}
+}
+window.addEventListener("focus", checkExternal);
+setInterval(checkExternal, 30000);
+window.addEventListener("beforeunload", e => { if (isDirty() || saving){ e.preventDefault(); e.returnValue = ""; } });
+/* ================= Ενιαία εικόνα: server + αλλαγές σε αναμονή ================= */
+function hoursOf(k){
+  if (pending.entries.has(k)) return pending.entries.get(k).newH;
+  if (inflight && inflight.entries.has(k)) return inflight.entries.get(k).newH;
+  return db.entries.get(k)?.hours || 0;
+}
+function allEntries(){
+  const m = new Map(); for (const [k,e] of db.entries) m.set(k,e.hours);
+  for (const src of [inflight, pending]) if (src) for (const [k,p] of src.entries){ if (p.newH>0) m.set(k,p.newH); else m.delete(k); }
+  return [...m.entries()].map(([k,h])=>{ const [date,person,project]=k.split("|"); return {date,person,project,hours:h}; });
+}
+function mergedList(base, kind){
+  const out = base.map(x=>({...x}));
+  for (const src of [inflight, pending]) if (src) for (const [n,v] of src[kind]){ const i=out.findIndex(x=>x.name===n); if (i>=0) out[i]={...v}; else out.push({...v}); }
+  return out;
+}
+const team = () => mergedList(db.team,"team");
+const projects = () => mergedList(db.projects,"projects");
+
+function setHours(date, person, project, h){
+  const k = key(date,person,project);
+  const base = db.entries.get(k)?.hours || 0;
+  const prev = pending.entries.get(k);
+  const oldH = prev ? prev.oldH : (inflight?.entries.get(k)?.newH ?? base);
+  if (h === oldH && !(inflight && inflight.entries.has(k))) pending.entries.delete(k);
+  else pending.entries.set(k,{date,person,project,oldH,newH:h});
+  scheduleSave();
+}
+
+/* ================= Χρήστης ================= */
+function me(){ return $("me").value.trim(); }
+$("me").value = (()=>{ try{ return localStorage.getItem("ts-me")||""; }catch(e){ return ""; } })();
+$("me").addEventListener("change", ()=>{ try{ localStorage.setItem("ts-me", me()); }catch(e){} banner(); });
+function banner(){
+  const b = $("banner");
+  if (db && !me()){ b.textContent = "Γράψτε το όνομά σας στο πεδίο «Είμαι» πάνω δεξιά. Κάθε αλλαγή καταγράφεται στο ιστορικό με αυτό το όνομα."; b.classList.remove("hidden"); }
+  else b.classList.add("hidden");
+}
+function requireMe(){ if (me()) return true; banner(); $("me").focus(); return false; }
+
+/* ================= Status ================= */
+function setStatus(kind, text){ const s=$("status"); s.className = kind; s.textContent = text; }
+
+/* ================= Καρτέλες ================= */
+let currentTab = "hours";
+function showTab(t){
+  currentTab = t; try{ localStorage.setItem("ts-tab",t); }catch(e){}
+  document.querySelectorAll("#tabs a").forEach(a=>a.classList.toggle("on", a.dataset.tab===t));
+  for (const s of ["hours","summary","setup","log"]) $("tab-"+s).classList.toggle("hidden", s!==t);
+  renderAll();
+}
+$("tabs").addEventListener("click", e => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
+
+function renderAll(keepFocus){
+  if (!db) return;
+  banner();
+  $("teamNames").innerHTML = team().map(t=>`<option value="${esc(t.name)}">`).join("");
+  if (currentTab==="hours") renderHours(keepFocus);
+  if (currentTab==="summary") renderSummary();
+  if (currentTab==="setup") renderSetup();
+  if (currentTab==="log") renderLog();
+}
+
+/* ================= Καρτέλα: Ώρες ================= */
+$("hMonth").value = todayIso().slice(0,7);
+function shiftMonth(n){ const [y,m]=$("hMonth").value.split("-").map(Number); const d=new Date(y,m-1+n,1); $("hMonth").value = isoLocal(d).slice(0,7); renderHours(); }
+$("hPrev").onclick = ()=>shiftMonth(-1); $("hNext").onclick = ()=>shiftMonth(1);
+for (const id of ["hPerson","hMonth","hWeekend","hInactive"]) $(id).addEventListener("change", ()=>{ if(id==="hPerson") try{localStorage.setItem("ts-person",$("hPerson").value)}catch(e){}; renderHours(); });
+
+function renderHours(keepFocus){
+  const people = team().filter(t=>t.active);
+  const sel = $("hPerson"); const want = sel.value || (()=>{ try{return localStorage.getItem("ts-person")}catch(e){return null} })() || me();
+  sel.innerHTML = people.map(t=>`<option>${esc(t.name)}</option>`).join("");
+  if (people.some(p=>p.name===want)) sel.value = want;
+  const person = sel.value; const ym = $("hMonth").value;
+  if (!person || !ym){ $("hTable").innerHTML = ""; $("hKpi").innerHTML=""; return; }
+  let days = daysOfMonth(ym); if (!$("hWeekend").checked) days = days.filter(d=>![0,6].includes(dow(d)) || days.some(()=>false) || hasHoursOnDay(person,d));
+  const used = new Set(allEntries().filter(e=>e.person===person && e.date.startsWith(ym)).map(e=>e.project));
+  const cols = projects().filter(p => p.active || used.has(p.name) || $("hInactive").checked);
+  const focused = document.activeElement?.dataset?.k;
+  let total = 0, dayCount = 0; const colTot = cols.map(()=>0);
+  let h = `<thead><tr><th class="st c0">Ημερομηνία</th><th class="st c1">Ημέρα</th><th class="st c2">Σύνολο</th>${cols.map(c=>`<th title="${esc(c.name)}">${esc(c.name)}${c.active?"":" <span class='pill off'>ανενεργό</span>"}</th>`).join("")}</tr></thead><tbody>`;
+  for (const d of days){
+    const wd = dow(d); let rt = 0;
+    const cells = cols.map((c,i)=>{ const k = key(d,person,c.name); const v = hoursOf(k); rt += v; colTot[i] += v;
+      const pend = pending.entries.has(k) || (inflight && inflight.entries.has(k));
+      return `<td><input data-k="${esc(k)}" value="${fmtH(v)}" inputmode="decimal" class="${pend?"pend":""}"></td>`; }).join("");
+    total += rt; if (rt>0) dayCount++;
+    h += `<tr class="${d===todayIso()?"today":""} ${[0,6].includes(wd)?"wk":""} ${wd===1?"mon":""}"><td class="st c0 d">${ddmm(d)}</td><td class="st c1 d">${GR_DAYS[wd]}</td><td class="st c2 tot ${rt>DAY_HOURS?"over":""}">${fmtH(rt)||"-"}</td>${cells}</tr>`;
+  }
+  h += `</tbody><tfoot><tr><td class="st c0">Σύνολο</td><td class="st c1"></td><td class="st c2">${fmtH(total)||"-"}</td>${colTot.map(v=>`<td>${fmtH(v)||"-"}</td>`).join("")}</tr></tfoot>`;
+  $("hTable").innerHTML = h;
+  const workdays = daysOfMonth(ym).filter(d=>![0,6].includes(dow(d))).length;
+  $("hKpi").innerHTML = `<div><b>${fmtH(total)||0}</b><span>ώρες τον μήνα</span></div><div><b>${fmtH(total/DAY_HOURS)||0}</b><span>man-days</span></div><div><b>${dayCount} / ${workdays}</b><span>ημέρες με καταχώριση / εργάσιμες</span></div>`;
+  if (keepFocus && focused){ const el = $("hTable").querySelector(`input[data-k="${CSS.escape(focused)}"]`); if (el) el.focus(); }
+}
+function hasHoursOnDay(person, d){ return allEntries().some(e=>e.person===person && e.date===d); }
+
+$("hTable").addEventListener("change", e => {
+  const el = e.target; if (!el.dataset.k) return;
+  if (!requireMe()){ el.value = fmtH(hoursOf(el.dataset.k)); return; }
+  const raw = el.value.trim().replace(",", ".");
+  const v = raw === "" ? 0 : Number(raw);
+  if (!isFinite(v) || v < 0 || v > 24){ el.classList.add("bad"); el.title = "Γράψτε ώρες από 0 έως 24"; return; }
+  el.classList.remove("bad"); el.title = "";
+  const [d,p,j] = el.dataset.k.split("|");
+  setHours(d,p,j,Math.round(v*100)/100);
+  renderHours(true);
+});
+$("hTable").addEventListener("keydown", e => {
+  const el = e.target; if (!el.dataset.k) return;
+  if (!["ArrowUp","ArrowDown","Enter"].includes(e.key)) return;
+  e.preventDefault();
+  const td = el.parentElement, tr = td.parentElement, idx = [...tr.children].indexOf(td);
+  const target = (e.key==="ArrowUp") ? tr.previousElementSibling : tr.nextElementSibling;
+  el.blur(); // πυροδοτεί change
+  const next = target?.children[idx]?.querySelector("input") ||
+               (()=>{ const k = el.dataset.k; const rowsEl=[...$("hTable").querySelectorAll("tbody tr")]; const r = rowsEl.findIndex(r=>r.querySelector(`input[data-k="${CSS.escape(k)}"]`)); const t = rowsEl[r + (e.key==="ArrowUp"?-1:1)]; return t?.children[idx]?.querySelector("input"); })();
+  if (next){ next.focus(); next.select(); }
+});
+
+/* ================= Καρτέλα: Σύνοψη ================= */
+function setRange(kind){
+  const t = new Date(); let a, b;
+  if (kind==="month"){ a = new Date(t.getFullYear(),t.getMonth(),1); b = new Date(t.getFullYear(),t.getMonth()+1,0); }
+  if (kind==="prev"){ a = new Date(t.getFullYear(),t.getMonth()-1,1); b = new Date(t.getFullYear(),t.getMonth(),0); }
+  if (kind==="year"){ a = new Date(t.getFullYear(),0,1); b = new Date(t.getFullYear(),11,31); }
+  $("sFrom").value = isoLocal(a); $("sTo").value = isoLocal(b); renderSummary();
+}
+document.querySelectorAll("[data-range]").forEach(b=>b.onclick=()=>setRange(b.dataset.range));
+for (const id of ["sFrom","sTo","sUnit"]) $(id).addEventListener("change", renderSummary);
+setRange("month");
+
+function renderSummary(){
+  if (!db) return;
+  const a = $("sFrom").value, b = $("sTo").value, md = $("sUnit").value==="md";
+  const conv = h => md ? h/DAY_HOURS : h;
+  const ents = allEntries().filter(e => e.date>=a && e.date<=b);
+  const projNames = projects().map(p=>p.name).filter(n => ents.some(e=>e.project===n));
+  const people = team().filter(t => t.active || ents.some(e=>e.person===t.name));
+  const cell = (p,j) => ents.filter(e=>e.person===p && e.project===j).reduce((s,e)=>s+e.hours,0);
+  let h = `<thead><tr><th>Άτομο</th><th>Grade</th><th>Type</th><th class="num">Σύνολο</th>${projNames.map(n=>`<th class="num">${esc(n)}</th>`).join("")}</tr></thead><tbody>`;
+  const colTot = projNames.map(()=>0); let grand = 0;
+  for (const t of people){
+    const vals = projNames.map(n=>cell(t.name,n)); const tot = vals.reduce((s,v)=>s+v,0); grand += tot;
+    vals.forEach((v,i)=>colTot[i]+=v);
+    h += `<tr><td><b>${esc(t.name)}</b>${t.active?"":" <span class='pill off'>ανενεργό</span>"}</td><td>${esc(t.grade)}</td><td>${esc(t.type)}</td><td class="num"><b>${fmtH(conv(tot))||"-"}</b></td>${vals.map(v=>`<td class="num">${fmtH(conv(v))||"-"}</td>`).join("")}</tr>`;
+  }
+  h += `</tbody><tfoot><tr><td>Σύνολο ομάδας</td><td></td><td></td><td class="num">${fmtH(conv(grand))||"-"}</td>${colTot.map(v=>`<td class="num">${fmtH(conv(v))||"-"}</td>`).join("")}</tr></tfoot>`;
+  $("sTable").innerHTML = projNames.length ? h : `<tbody><tr><td style="padding:20px">Δεν υπάρχουν ώρες σε αυτό το διάστημα.</td></tr></tbody>`;
+}
+
+/* ================= Καρτέλα: Ομάδα & Projects ================= */
+function renderSetup(){
+  $("teamTable").innerHTML = `<thead><tr><th>Άτομο</th><th>Grade</th><th>Type</th><th>Κατάσταση</th></tr></thead><tbody>` +
+    team().map(t=>`<tr><td>${esc(t.name)}</td><td><input type="number" style="width:60px" data-tg="${esc(t.name)}" value="${esc(t.grade)}"></td>
+      <td><select data-tt="${esc(t.name)}">${["DEV","PM","BA","QA","ARCH"].concat(["DEV","PM","BA","QA","ARCH"].includes(t.type)?[]:[t.type]).map(x=>`<option ${x===t.type?"selected":""}>${esc(x)}</option>`).join("")}</select></td>
+      <td><button class="sec" data-ta="${esc(t.name)}">${t.active?"Ενεργό → απενεργοποίηση":"Ανενεργό → ενεργοποίηση"}</button></td></tr>`).join("") + `</tbody>`;
+  $("projTable").innerHTML = `<thead><tr><th>Project</th><th>Κατάσταση</th></tr></thead><tbody>` +
+    projects().map(p=>`<tr><td>${esc(p.name)}</td><td><button class="sec" data-pa="${esc(p.name)}">${p.active?"Ενεργό → απενεργοποίηση":"Ανενεργό → ενεργοποίηση"}</button></td></tr>`).join("") + `</tbody>`;
+}
+function updTeam(name, patch){ if(!requireMe()) return; const t = team().find(x=>x.name===name); pending.team.set(name,{...t,...patch}); scheduleSave(); renderAll(); }
+$("teamTable").addEventListener("click", e => { const n = e.target.dataset.ta; if (n!==undefined){ const t = team().find(x=>x.name===n); updTeam(n,{active:!t.active}); } });
+$("teamTable").addEventListener("change", e => {
+  if (e.target.dataset.tg!==undefined) updTeam(e.target.dataset.tg,{grade:e.target.value===""?"":Number(e.target.value)});
+  if (e.target.dataset.tt!==undefined) updTeam(e.target.dataset.tt,{type:e.target.value});
+});
+$("projTable").addEventListener("click", e => { const n = e.target.dataset.pa; if (n===undefined || !requireMe()) return;
+  const p = projects().find(x=>x.name===n); pending.projects.set(n,{...p,active:!p.active}); scheduleSave(); renderAll(); });
+$("nAdd").onclick = () => {
+  if (!requireMe()) return; const name = $("nName").value.trim(); if (!name) return;
+  if (team().some(t=>t.name.toLowerCase()===name.toLowerCase())){ alertBar("Υπάρχει ήδη άτομο με αυτό το όνομα."); return; }
+  pending.team.set(name,{name,grade:$("nGrade").value===""?"":Number($("nGrade").value),type:$("nType").value,active:true});
+  $("nName").value = ""; $("nGrade").value = ""; scheduleSave(); renderAll();
+};
+$("pAdd").onclick = () => {
+  if (!requireMe()) return; const name = $("pName").value.trim(); if (!name) return;
+  if (projects().some(p=>p.name.toLowerCase()===name.toLowerCase())){ alertBar("Υπάρχει ήδη project με αυτό το όνομα."); return; }
+  if (name.includes("|")){ alertBar("Το όνομα δεν μπορεί να περιέχει τον χαρακτήρα |."); return; }
+  pending.projects.set(name,{name,active:true}); $("pName").value = ""; scheduleSave(); renderAll();
+};
+function alertBar(msg){ const b=$("banner"); b.textContent = msg; b.classList.remove("hidden"); setTimeout(banner, 4000); }
+
+/* ================= Καρτέλα: Ιστορικό ================= */
+let logCache = [];
+for (const id of ["lPerson","lSearch"]) $(id).addEventListener("input", drawLog);
+async function renderLog(){
+  if (!db) return;
+  try{ logCache = await api("api/log?limit=5000"); }catch(e){ setStatus("error","Το ιστορικό δεν φορτώθηκε: " + e.message); }
+  drawLog();
+}
+function drawLog(){
+  const sel = $("lPerson"), cur = sel.value;
+  sel.innerHTML = `<option value="">Όλοι</option>` + team().map(t=>`<option>${esc(t.name)}</option>`).join(""); sel.value = cur;
+  const q = $("lSearch").value.trim().toLowerCase();
+  const list = logCache.filter(l => (!sel.value || l.person===sel.value) && (!q || [l.user,l.project,l.action,l.note,l.person].join(" ").toLowerCase().includes(q)));
+  $("lCount").textContent = `${list.length} εγγραφές` + (list.length>1000?" (εμφανίζονται οι 1000 πιο πρόσφατες)":"");
+  const n = v => v===null||v===undefined ? "" : (fmtH(v)||"0");
+  $("lTable").innerHTML = `<thead><tr><th>Πότε</th><th>Ποιος</th><th>Ενέργεια</th><th>Ημερομηνία</th><th>Άτομο</th><th>Project</th><th class="num">Πριν</th><th class="num">Μετά</th><th>Σημείωση</th></tr></thead><tbody>` +
+    list.slice(0,1000).map(l=>`<tr><td>${esc(l.ts)}</td><td>${esc(l.user)}</td><td>${esc(l.action)}</td><td>${l.date?ddmm(l.date):""}</td><td>${esc(l.person)}</td><td>${esc(l.project)}</td><td class="num">${n(l.old_hours)}</td><td class="num">${n(l.new_hours)}</td><td class="muted">${esc(l.note)}</td></tr>`).join("") + `</tbody>`;
+}
+
+/* ================= Λήψη Excel ================= */
+function download(url){ const a = document.createElement("a"); a.href = url; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }
+$("btnExport").onclick = async () => { await save(); download("api/export"); };
+$("sExport").onclick = async () => { await save(); download(`api/export?from=${$("sFrom").value}&to=${$("sTo").value}`); };
+
+/* ================= Έναρξη ================= */
+$("btnSave").onclick = () => { saveError = null; save(); };
+(async () => {
+  try{
+    await loadState();
+    $("start").classList.add("hidden"); $("tabs").classList.remove("hidden");
+    showTab((()=>{ try{ return localStorage.getItem("ts-tab"); }catch(e){ return null; } })() || "hours");
+  }catch(e){ $("startErr").textContent = "Ο server δεν απάντησε: " + e.message; setStatus("error","Χωρίς σύνδεση"); }
+})();
+</script>
+</body>
+</html>

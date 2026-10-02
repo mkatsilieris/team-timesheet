@@ -1,0 +1,12 @@
+services:
+  timesheet:
+    build: .
+    image: team-timesheet:latest
+    container_name: team-timesheet
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./data:/data          # timesheet.db ζει εδώ — κάντε backup αυτόν τον φάκελο
+    environment:
+      - TZ=Europe/Athens
+    restart: unless-stopped
