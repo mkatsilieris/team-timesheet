@@ -219,6 +219,7 @@ def register(body: Register):
              "ADMIN_EMAILS" if is_admin else "", stamp if is_admin else ""),
         )
         db.add_log(conn, body.name, "Εγγραφή χρήστη", note=f"{email} ({role})", ts=stamp)
+        db.sync_team_member(conn, email, "system", ts=stamp)
         # Αν το email δεν φύγει, η εξαίρεση ακυρώνει τη συναλλαγή και ο λογαριασμός δεν δημιουργείται.
         send_or_fail(email, body.name, password, reset=False)
     return {"ok": True, "message": "Ο κωδικός πρόσβασης στάλθηκε στο email σας."}
@@ -254,6 +255,7 @@ def login(body: Login, response: Response):
                 conn.execute("UPDATE users SET role='admin', approved_by='ADMIN_EMAILS', approved_at=? WHERE email=?",
                              (stamp, email))
                 db.add_log(conn, "system", "Αλλαγή πρόσβασης", note=f"{email}: {user['role']} → admin (ADMIN_EMAILS)", ts=stamp)
+                db.sync_team_member(conn, email, "system", ts=stamp)
             conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
             conn.execute("INSERT INTO sessions(token_hash,email,created_at,expires_at) VALUES (?,?,?,?)",
                          (_token_hash(token), email, now, now + SESSION_TTL))
@@ -342,4 +344,5 @@ def set_role(body: RoleChange, admin: Admin):
             conn.execute("UPDATE users SET role=?, approved_by=?, approved_at=? WHERE email=?",
                          (body.role, admin["email"] if approved else "", stamp if approved else "", email))
             db.add_log(conn, admin["name"], "Αλλαγή πρόσβασης", note=f"{email}: {user['role']} → {body.role}", ts=stamp)
+            db.sync_team_member(conn, email, admin["name"], ts=stamp)
     return list_users(admin)

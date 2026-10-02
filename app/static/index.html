@@ -179,12 +179,7 @@ td input.pend{background:#FFF0B3}
     <div class="grid2">
       <div class="card">
         <h3 style="margin-top:0">Ομάδα</h3>
-        <div class="bar">
-          <input type="text" id="nName" placeholder="ΕΠΩΝΥΜΟ Όνομα">
-          <input type="number" id="nGrade" placeholder="Grade" style="width:80px">
-          <select id="nType"><option>DEV</option><option>PM</option><option>BA</option><option>QA</option><option>ARCH</option></select>
-          <button id="nAdd">Προσθήκη ατόμου</button>
-        </div>
+        <p class="muted">Τα άτομα είναι οι χρήστες με εγκεκριμένη πρόσβαση. Ένας νέος συνάδελφος κάνει εγγραφή και εμφανίζεται εδώ μόλις τον εγκρίνει ένας διαχειριστής. Το Grade, το Type και την κατάσταση τα αλλάζουν μόνο οι διαχειριστές.</p>
         <table class="list" id="teamTable"></table>
       </div>
       <div class="card">
@@ -495,27 +490,26 @@ function renderSummary(){
 
 /* ================= Καρτέλα: Ομάδα & Projects ================= */
 function renderSetup(){
+  const admin = ME && ME.role === "admin";
+  const TYPES = ["", "DEV","PM","BA","QA","ARCH"];
   $("teamTable").innerHTML = `<thead><tr><th>Άτομο</th><th>Grade</th><th>Type</th><th>Κατάσταση</th></tr></thead><tbody>` +
-    team().map(t=>`<tr><td>${esc(t.name)}</td><td><input type="number" style="width:60px" data-tg="${esc(t.name)}" value="${esc(t.grade)}"></td>
-      <td><select data-tt="${esc(t.name)}">${["DEV","PM","BA","QA","ARCH"].concat(["DEV","PM","BA","QA","ARCH"].includes(t.type)?[]:[t.type]).map(x=>`<option ${x===t.type?"selected":""}>${esc(x)}</option>`).join("")}</select></td>
-      <td><button class="sec" data-ta="${esc(t.name)}">${t.active?"Ενεργό → απενεργοποίηση":"Ανενεργό → ενεργοποίηση"}</button></td></tr>`).join("") + `</tbody>`;
+    (team().length ? team().map(t=> admin
+      ? `<tr><td>${esc(t.name)}</td><td><input type="number" style="width:60px" data-tg="${esc(t.name)}" value="${esc(t.grade)}"></td>
+      <td><select data-tt="${esc(t.name)}">${TYPES.concat(TYPES.includes(t.type)?[]:[t.type]).map(x=>`<option value="${esc(x)}" ${x===t.type?"selected":""}>${x?esc(x):"—"}</option>`).join("")}</select></td>
+      <td><button class="sec" data-ta="${esc(t.name)}">${t.active?"Ενεργό → απενεργοποίηση":"Ανενεργό → ενεργοποίηση"}</button></td></tr>`
+      : `<tr><td>${esc(t.name)}</td><td>${esc(t.grade ?? "—")}</td><td>${esc(t.type || "—")}</td><td><span class="pill ${t.active?"":"off"}">${t.active?"ενεργό":"ανενεργό"}</span></td></tr>`
+    ).join("") : `<tr><td colspan="4" class="muted" style="padding:14px">Δεν υπάρχουν ακόμα εγκεκριμένοι χρήστες.</td></tr>`) + `</tbody>`;
   $("projTable").innerHTML = `<thead><tr><th>Project</th><th>Κατάσταση</th></tr></thead><tbody>` +
     projects().map(p=>`<tr><td>${esc(p.name)}</td><td><button class="sec" data-pa="${esc(p.name)}">${p.active?"Ενεργό → απενεργοποίηση":"Ανενεργό → ενεργοποίηση"}</button></td></tr>`).join("") + `</tbody>`;
 }
-function updTeam(name, patch){ if(!requireMe()) return; const t = team().find(x=>x.name===name); pending.team.set(name,{...t,...patch}); scheduleSave(); renderAll(); }
+function updTeam(name, patch){ if(!requireMe() || ME.role !== "admin") return; const t = team().find(x=>x.name===name); pending.team.set(name,{...t,...patch}); scheduleSave(); renderAll(); }
 $("teamTable").addEventListener("click", e => { const n = e.target.dataset.ta; if (n!==undefined){ const t = team().find(x=>x.name===n); updTeam(n,{active:!t.active}); } });
 $("teamTable").addEventListener("change", e => {
-  if (e.target.dataset.tg!==undefined) updTeam(e.target.dataset.tg,{grade:e.target.value===""?"":Number(e.target.value)});
+  if (e.target.dataset.tg!==undefined) updTeam(e.target.dataset.tg,{grade:e.target.value===""?null:Number(e.target.value)});
   if (e.target.dataset.tt!==undefined) updTeam(e.target.dataset.tt,{type:e.target.value});
 });
 $("projTable").addEventListener("click", e => { const n = e.target.dataset.pa; if (n===undefined || !requireMe()) return;
   const p = projects().find(x=>x.name===n); pending.projects.set(n,{...p,active:!p.active}); scheduleSave(); renderAll(); });
-$("nAdd").onclick = () => {
-  if (!requireMe()) return; const name = $("nName").value.trim(); if (!name) return;
-  if (team().some(t=>t.name.toLowerCase()===name.toLowerCase())){ alertBar("Υπάρχει ήδη άτομο με αυτό το όνομα."); return; }
-  pending.team.set(name,{name,grade:$("nGrade").value===""?"":Number($("nGrade").value),type:$("nType").value,active:true});
-  $("nName").value = ""; $("nGrade").value = ""; scheduleSave(); renderAll();
-};
 $("pAdd").onclick = () => {
   if (!requireMe()) return; const name = $("pName").value.trim(); if (!name) return;
   if (projects().some(p=>p.name.toLowerCase()===name.toLowerCase())){ alertBar("Υπάρχει ήδη project με αυτό το όνομα."); return; }

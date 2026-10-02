@@ -109,20 +109,21 @@ def post_changes(ch: Changes, user: Member):
     Αν στο μεταξύ κάποιος άλλος άλλαξε την ίδια τιμή (τρέχουσα τιμή != oldH), κερδίζει η νεότερη αλλαγή
     και το log σημειώνει τη σύγκρουση.
     """
+    if ch.team and user["role"] != "admin":
+        raise HTTPException(403, "Τα στοιχεία των ατόμων τα αλλάζει μόνο διαχειριστής.")
     conflicts = 0
     now = db.now_stamp()
     with db.write_tx() as conn:
         for t in ch.team:
+            # Τα άτομα δημιουργούνται μόνο από την έγκριση χρηστών (db.sync_team_member)· εδώ μόνο αλλάζουν.
             before = conn.execute("SELECT * FROM team WHERE name=?", (t.name,)).fetchone()
-            conn.execute(
-                "INSERT INTO team(name,grade,type,active) VALUES (?,?,?,?) "
-                "ON CONFLICT(name) DO UPDATE SET grade=excluded.grade, type=excluded.type, active=excluded.active",
-                (t.name, t.grade, t.type, int(t.active)),
-            )
-            desc = f"Grade {t.grade}, {t.type}, {'ενεργό' if t.active else 'ανενεργό'}"
-            if before:
-                desc += f" (πριν: Grade {before['grade']}, {before['type']}, {'ενεργό' if before['active'] else 'ανενεργό'})"
-            db.add_log(conn, user["name"], "Αλλαγή ατόμου" if before else "Νέο άτομο", person=t.name, note=desc, ts=now)
+            if not before:
+                raise HTTPException(400, f"Δεν υπάρχει άτομο «{t.name}». Τα άτομα προστίθενται όταν εγκρίνετε την εγγραφή τους.")
+            conn.execute("UPDATE team SET grade=?, type=?, active=? WHERE name=?",
+                         (t.grade, t.type, int(t.active), t.name))
+            desc = (f"Grade {t.grade}, {t.type}, {'ενεργό' if t.active else 'ανενεργό'} "
+                    f"(πριν: Grade {before['grade']}, {before['type']}, {'ενεργό' if before['active'] else 'ανενεργό'})")
+            db.add_log(conn, user["name"], "Αλλαγή ατόμου", person=t.name, note=desc, ts=now)
 
         for p in ch.projects:
             before = conn.execute("SELECT * FROM projects WHERE name=?", (p.name,)).fetchone()
